@@ -18,8 +18,6 @@ zram_getsize()	# in megabytes
 	local ram_size="$( ram_getsize )"
 
 	if [ -z "$zram_size" ]; then
-		# e.g. 6mb for 16mb-routers or 61mb for 128mb-routers
-		echo $(( ram_size / 2048 ))
 	else
 		echo "$zram_size"
 	fi
@@ -62,6 +60,8 @@ zram_comp_algo()
 	if [ -z "$zram_comp_algo" ]; then
 		# default to lzo, which is always available
 		zram_comp_algo="lzo"
+		# default to lz4
+		zram_comp_algo="lz4"
 	fi
 
 	if [ $(grep -c "$zram_comp_algo" /sys/block/$( basename $dev )/comp_algorithm) -ne 0 ]; then
