@@ -76,7 +76,7 @@ return view.extend({
 
 	render: function(data) {
 		var m, s, o;
-		var features = data[1];
+		var features = data[1] || {};
 		features.hasNSSECM = !!features.hasNSSECM || !!data[2];
 
 		m = new form.Map('turboacc', _('TurboACC settings'),
@@ -201,7 +201,8 @@ return view.extend({
 
 		o = s.option(form.ListValue, 'tcpcca', _('TCP CCA'),
 			_('TCP congestion control algorithm.'));
-		for (var i of features.hasTCPCCA.split(' ').sort())
+		var tcpccaList = (features.hasTCPCCA || 'reno cubic bbr').trim().split(/\s+/).sort();
+		for (var i of tcpccaList)
 			o.value(i);
 		o.default = 'cubic';
 		o.rmempty = false;

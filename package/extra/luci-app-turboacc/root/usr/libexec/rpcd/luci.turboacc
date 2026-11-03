@@ -44,7 +44,7 @@ local methods = {
 	getSystemFeatures = {
 		call = function()
 			local boardinfo = util.ubus("system", "board") or {}
-			local features  = {
+			return {
 				hasIPV6           = fs.access("/proc/net/ipv6_route"),
 				hasFLOWOFFLOADING = fs.access("/lib/modules/" .. boardinfo.kernel .. "/xt_FLOWOFFLOAD.ko") or fs.access("/lib/modules/" .. boardinfo.kernel .. "/xt_FLOWOFFLOAD.ko"),
 				hasFASTCLASSIFIER = fs.access("/lib/modules/" .. boardinfo.kernel .. "/fast-classifier.ko"),
@@ -54,10 +54,9 @@ local methods = {
 				hasMTKWEDWO       = (sys.call("grep -Eq 'mediatek' /etc/openwrt_release") == 0) and
 					has_mtkwed_module(boardinfo.kernel),
 				hasXTFULLCONENAT  = fs.access("/lib/modules/" .. boardinfo.kernel .. "/xt_FULLCONENAT.ko"),
-				hasNFTFULLCONENAT  = fs.access("/lib/modules/" .. boardinfo.kernel .. "/nft_fullcone.ko"),
-				hasTCPCCA         = readfile("/proc/sys/net/ipv4/tcp_available_congestion_control")
+				hasNFTFULLCONENAT = fs.access("/lib/modules/" .. boardinfo.kernel .. "/nft_fullcone.ko"),
+				hasTCPCCA         = readfile("/proc/sys/net/ipv4/tcp_available_congestion_control") or "reno cubic bbr"
 			}
-			print(json.stringify(features))
 		end
 	},
 	getFastPathStat = {
@@ -91,7 +90,7 @@ local methods = {
 					fptype = "MediaTek HNAT" .. ethernet_hnat .. wireless_hnat
 				end
 			end
-			print(json.stringify({ type = fptype }))
+			return { type = fptype }
 		end
 	},
 	getFullConeStat = {
@@ -108,14 +107,14 @@ local methods = {
 			elseif sys.call("iptables -t nat -L zone_wan_postrouting 2>/dev/null | grep -q fullcone") == 0 then
 				fctype = "Broadcom Fullcone NAT1"
 			end
-			print(json.stringify({ type = fctype }))
+			return { type = fctype }
 		end
 	},
 	getTCPCCAStat = {
 		call = function()
 			local ccatype = readfile("/proc/sys/net/ipv4/tcp_congestion_control")
 			ccatype = ccatype and ccatype:upper() or nil
-			print(json.stringify({ type = ccatype }))
+			return { type = ccatype }
 		end
 	}
 }
