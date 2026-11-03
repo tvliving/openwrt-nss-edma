@@ -98,7 +98,6 @@ for (let phy_name, phy in board.wlan) {
 
 		band_name = lc(band_name);
 
-		let country, encryption, defaults, num_global_macaddr;
 		if (band_name == '6g') {
 			country = '00';
 			encryption = 'owe';
@@ -128,6 +127,7 @@ set ${s}.channel='${channel}'
 set ${s}.htmode='${htmode}'
 set ${s}.country='${country || ''}'
 set ${s}.num_global_macaddr='${num_global_macaddr || ''}'
+set ${s}.disabled='0'
 
 set ${si}=wifi-iface
 set ${si}.device='${name}'
@@ -137,6 +137,7 @@ set ${si}.ssid='${defaults?.ssid || "OpenWrt"}'
 set ${si}.encryption='${defaults?.encryption || encryption}'
 set ${si}.key='${defaults?.key || ""}'
 set ${si}.disabled='${defaults ? 0 : 1}'
+set ${si}.disabled='0'
 
 `);
 		config[name] = {};
