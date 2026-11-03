@@ -156,7 +156,7 @@
 		nand-ecc-strength = <8>;
 		nand-bus-width = <8>;
 
-		partitions {
+		partitions: partitions {
 			compatible = "qcom,smem-part";
 
 			partition-art {
