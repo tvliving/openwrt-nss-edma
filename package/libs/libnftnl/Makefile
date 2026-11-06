@@ -23,6 +23,16 @@ PKG_LICENSE_FILES:=COPYING
 PKG_INSTALL:=1
 PKG_BUILD_PARALLEL:=1
 PKG_BUILD_FLAGS:=lto
+# 001-libnftnl-add-fullcone-expression-support.patch adds src/expr/fullcone.c to
+# src/Makefile.am, so the patched tree has Makefile.am newer than Makefile.in and make
+# wants to re-run automake. The tarball was rolled with automake 1.17, so it calls
+# "automake-1.17", which neither the CI runner nor the build container has:
+#   build-aux/missing: line 85: automake-1.17: command not found
+#   make: *** [Makefile:489: Makefile.in] Error 127
+# autoreconf regenerates Makefile.in/configure with the tree's own host tools
+# (tools/automake 1.18.1 + tools/autoconf 2.72 + tools/libtool), so no external
+# automake version is needed and the new source file is actually picked up.
+PKG_FIXUP:=autoreconf
 
 include $(INCLUDE_DIR)/package.mk
 
