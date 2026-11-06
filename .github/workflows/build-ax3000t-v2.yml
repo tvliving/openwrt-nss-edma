@@ -1,0 +1,243 @@
+name: Build Xiaomi AX3000T v2 (IPQ5018, stock layout)
+
+# 只编小米 AX3000T v2（qualcommax/ipq50xx，IPQ5018，256 MB RAM）。
+#
+# 原厂分区布局 = 树里该机型的默认定义（BLOCKSIZE 128k / PAGESIZE 2048 /
+# KERNEL_SIZE 36864k / UbiFit），不做合并分区，也不需要替换 bootloader：
+#   - initramfs-factory.ubi：原厂（带 Web 恢复界面的）uboot 直接吃这个，
+#     用于首次安装 / 从原厂固件切过来
+#   - factory.ubi          ：UBI 工厂镜像（树里同时产出时一并带上）
+#   - sysupgrade.bin       ：已在 OpenWrt 上时升级用
+#
+# 内存档位沿用 256m 组（ATH11K_MEM_PROFILE_256M + NSS_MEM_PROFILE_LOW），
+# 其余 NSS/ath11k offload 配置来自 common.config。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag（留空 = ax3000t-v2-stock-YYYY.MM.DD）"
+        required: false
+        type: string
+      make_release:
+        description: "是否发布 Release（只新增，不删历史）"
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: build-ax3000t-v2
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  TARGET: qualcommax/ipq50xx
+  DEVICE: xiaomi_mi-router-ax3000t-v2
+  CI_DIR: .github/ci/ipq50xx
+
+jobs:
+  build:
+    name: Build AX3000T v2 (stock partitions)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 360
+    steps:
+      - name: Free disk space
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h / | tail -1
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update || true
+          sudo apt-get install -y bzip2 g++ gawk gcc git glibc-source libncurses-dev make rsync
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # scripts/getver.sh derives the revision from history
+
+      - name: Feeds
+        run: |
+          set -euo pipefail
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Assemble .config (single board, stock partition layout)
+        run: |
+          set -euo pipefail
+          # common.config 提供 NSS/ath11k offload 全套；256m.config 提供 256 MB 内存档位，
+          # 但把它里面其它板型的行去掉，只留 AX3000T v2。
+          {
+            cat "${CI_DIR}/common.config"
+            grep -v '^CONFIG_TARGET_DEVICE_' "${CI_DIR}/256m.config"
+            echo "CONFIG_TARGET_DEVICE_qualcommax_ipq50xx_DEVICE_${DEVICE}=y"
+            # 原厂 uboot 的 Web 恢复只吃全新建 UBI，这个镜像就是安装入口
+            echo "CONFIG_TARGET_ROOTFS_INITRAMFS=y"
+          } >.config
+
+          make defconfig
+
+          # defconfig 可能顺手打开别的板型：显式关掉后重跑一次
+          extras=$(grep -oE '^CONFIG_TARGET_DEVICE_[^=]+=y' .config | grep -v "DEVICE_${DEVICE}=y" || true)
+          if [[ -n "$extras" ]]; then
+            echo "::warning::defconfig also selected other boards, closing them:"
+            echo "$extras"
+            while read -r line; do
+              [[ -z "$line" ]] && continue
+              echo "# ${line%=y} is not set" >>.config
+            done <<<"$extras"
+            make defconfig
+          fi
+
+          n=$(grep -cE '^CONFIG_TARGET_DEVICE_qualcommax_ipq50xx_DEVICE_[^=]+=y' .config || true)
+          echo "boards selected: $n"
+          [[ "$n" -eq 1 ]] || { echo "::error::$n boards selected, expected 1"; exit 1; }
+          grep -qxF "CONFIG_TARGET_DEVICE_qualcommax_ipq50xx_DEVICE_${DEVICE}=y" .config \
+            || { echo "::error::device symbol lost"; exit 1; }
+          grep -qxF 'CONFIG_TARGET_ROOTFS_INITRAMFS=y' .config \
+            || { echo "::error::CONFIG_TARGET_ROOTFS_INITRAMFS lost, no initramfs-factory.ubi would be built"; exit 1; }
+          echo "--- key symbols ---"
+          grep -E 'CONFIG_(TARGET_DEVICE_|ATH11K_MEM_PROFILE|NSS_MEM_PROFILE|TARGET_ROOTFS_INITRAMFS|TARGET_PER_DEVICE_ROOTFS|TARGET_MULTI_PROFILE)' .config
+
+          # 该机型的 DEVICE_PACKAGES 必须真的被选上，否则会在最后组装 rootfs 时才失败
+          python3 - <<'PY'
+          import os, re, sys
+          dev = os.environ["DEVICE"]
+          cfg = open('.config').read()
+          built = set(re.findall(r'^CONFIG_PACKAGE_([^=]+)=[ym]', cfg, re.M))
+          info = open('tmp/.targetinfo').read() if os.path.exists('tmp/.targetinfo') else ''
+          bad = 0
+          for blk in info.split('Target-Profile: DEVICE_')[1:]:
+              name = blk.split('\n', 1)[0].strip()
+              if name != dev:
+                  continue
+              m = re.search(r'^Target-Profile-Packages:(.*)$', blk, re.M)
+              for pkg in (m.group(1).split() if m else []):
+                  if not pkg.startswith('-') and pkg not in built:
+                      print(f'::error::{name}: device package {pkg} is not selected')
+                      bad = 1
+          sys.exit(bad)
+          PY
+
+          ./scripts/diffconfig.sh >diffconfig.txt
+          cat diffconfig.txt
+
+      - name: Download sources
+        timeout-minutes: 75
+        env:
+          GIT_HTTP_LOW_SPEED_LIMIT: 1000
+          GIT_HTTP_LOW_SPEED_TIME: 60
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in 1 2 3; do
+            if timeout --kill-after=60 20m make download -j"$(nproc)"; then
+              ok=1
+              break
+            fi
+            echo "::warning::download attempt $attempt failed or ran into the 20 minute limit"
+            sleep 5
+          done
+          [[ "$ok" == 1 ]] || { echo "::error::the sources could not be downloaded in three attempts"; exit 1; }
+
+      - name: Compute ccache key
+        id: ccache
+        run: |
+          set -euo pipefail
+          tree=$(git rev-parse HEAD:toolchain)
+          sum=$({ echo "$tree"; echo "$DEVICE"; grep -E '^CONFIG_(BINUTILS|GCC|LIBC|MUSL)_' .config; gcc --version; as --version; } \
+                | sha256sum | cut -c1-16)
+          echo "prefix=ccache-ax3000t-v2-${sum}-" >>"$GITHUB_OUTPUT"
+
+      - name: Restore ccache
+        uses: actions/cache@v6
+        with:
+          path: .ccache
+          key: ${{ steps.ccache.outputs.prefix }}${{ github.run_id }}
+          restore-keys: ${{ steps.ccache.outputs.prefix }}
+
+      - name: Build
+        env:
+          CCACHE_COMPILERCHECK: content
+          CCACHE_MAXSIZE: 4G
+        run: |
+          set -euo pipefail
+          if ! make -j"$(nproc)"; then
+            make -j1 V=s 2>&1 | tail -300
+            exit 1
+          fi
+          CCACHE_DIR="$PWD/.ccache" staging_dir/host/bin/ccache -s || true
+          df -h / | tail -1
+
+      - name: Check the output
+        run: |
+          set -euo pipefail
+          out="bin/targets/${TARGET}"
+          ls -lh "$out" | head -40
+          compgen -G "$out/openwrt-*-${DEVICE}-squashfs-sysupgrade.bin" >/dev/null \
+            || { echo "::error::no sysupgrade image"; exit 1; }
+          compgen -G "$out/openwrt-*-${DEVICE}-initramfs-factory.ubi" >/dev/null \
+            || { echo "::error::no initramfs-factory.ubi (stock uboot recovery cannot flash)"; exit 1; }
+          compgen -G "$out/openwrt-*-${DEVICE}-squashfs-factory.ubi" >/dev/null \
+            && echo "factory.ubi present" || echo "::warning::no squashfs-factory.ubi (only initramfs + sysupgrade)"
+          grep -E "${DEVICE}" "$out/sha256sums" >sha256sums-ax3000t-v2.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ax3000t-v2-stock
+          path: |
+            bin/targets/qualcommax/ipq50xx/openwrt-*-xiaomi_mi-router-ax3000t-v2-*
+            bin/targets/qualcommax/ipq50xx/config.buildinfo
+            sha256sums-ax3000t-v2.txt
+            diffconfig.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish release
+        if: ${{ inputs.make_release != false }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          out="bin/targets/${TARGET}"
+          tag="$INPUT_TAG"
+          if [[ -z "$tag" ]]; then
+            base="ax3000t-v2-stock-$(date -u +%Y.%m.%d)"
+            tag="$base"; n=2
+            while gh release view "$tag" >/dev/null 2>&1; do tag="${base}-${n}"; n=$((n+1)); done
+          fi
+
+          mkdir -p rel
+          cp "$out"/openwrt-*-"${DEVICE}"-* rel/ 2>/dev/null || true
+          cp "$out/config.buildinfo" rel/ 2>/dev/null || true
+          cp sha256sums-ax3000t-v2.txt diffconfig.txt rel/
+          ls -lh rel/
+
+          cat >notes.md <<EOF
+          Xiaomi Mi Router AX3000T v2 (IPQ5018, 256 MB) — **原厂分区布局**，NSS/EDMA 固件。
+
+          - 树: \`${GITHUB_REPOSITORY}@${GITHUB_SHA::12}\`（分支 \`${GITHUB_REF_NAME}\`）
+          - 内存档位: ATH11K 256M / NSS LOW（256m 组）
+          - 构建: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          | 文件 | 用途 |
+          |---|---|
+          | \`*-initramfs-factory.ubi\` | 原厂 uboot 的 Web 恢复界面刷入，首次切换到 OpenWrt |
+          | \`*-squashfs-sysupgrade.bin\` | 已在 OpenWrt 上时升级 |
+          | \`*-squashfs-factory.ubi\` | 若本次产出则同样可用于 UBI 恢复 |
+
+          刷机前确认是 **AX3000T v2（IPQ5018）**，v1 是 MT7981，固件不通用。
+          EOF
+
+          gh release create "$tag" rel/* \
+            --title "OpenWrt NSS/EDMA · AX3000T v2 · $tag" \
+            --notes-file notes.md
+          echo "published: $tag"
