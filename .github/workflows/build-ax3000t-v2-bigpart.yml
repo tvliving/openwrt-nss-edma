@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           cp -a .github/bigpart/target/. target/
-          cp .github/bigpart/patches/0999-*.patch target/linux/qualcommax/patches-6.18/
+          # 原地 sysupgrade 的能力在 nss-edma 的 platform.sh 里已具备，无需额外内核补丁
           chmod +x target/linux/qualcommax/ipq50xx/base-files/etc/init.d/rd03v2-installer \
                    target/linux/qualcommax/ipq50xx/base-files/etc/uci-defaults/00-rd03v2-migrate-v1x
           ls -l target/linux/qualcommax/ipq50xx/base-files/etc/init.d/rd03v2-installer
