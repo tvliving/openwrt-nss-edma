@@ -13,6 +13,9 @@ name: Build Xiaomi AX3000T v2 (IPQ5018, big-partition / in-place sysupgrade)
 # 其余 NSS/ath11k offload 配置来自 common.config。
 
 on:
+  schedule:
+    # 每周六 10:00 北京时间 = 02:00 UTC
+    - cron: '0 2 * * 6'
   workflow_dispatch:
     inputs:
       tag:
@@ -210,12 +213,20 @@ jobs:
           if-no-files-found: error
 
       - name: Publish release
-        if: ${{ inputs.make_release != false }}
+        # 不要写成 `if: ${{ inputs.make_release != false }}`：GitHub 表达式在两边类型不同时
+        # 会强转成数字比较（null→0、false→0）。定时触发或 API 触发不带 inputs 时该值就是 null，
+        # 于是 `0 != 0` = false，步骤永远被跳过 —— 这就是定时构建一直不出 Release 的原因。
+        # 改成永远执行 + 在 shell 里判断，既能显式打印跳过原因，也不受表达式强转影响。
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.tag }}
+          WANT_RELEASE: ${{ github.event_name == 'schedule' || inputs.make_release }}
         run: |
           set -euo pipefail
+          if [[ "$WANT_RELEASE" != "true" ]]; then
+            echo "make_release=false，跳过发布（镜像仍可从本次 run 的 Artifacts 下载）"
+            exit 0
+          fi
           out="bin/targets/${TARGET}"
           tag="$INPUT_TAG"
           if [[ -z "$tag" ]]; then
@@ -250,3 +261,4 @@ jobs:
             --title "OpenWrt NSS/EDMA · AX3000T v2 · $tag" \
             --notes-file notes.md
           echo "published: $tag"
+
