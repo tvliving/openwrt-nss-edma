@@ -34,6 +34,12 @@ ipq50xx_setup_interfaces()
 	avm,fritzbox-4050|\
 	cmcc,mr3000d-ci|\
 	cmcc,rax3000q|\
+	h3c,magic-bx54-eu|\
+	h3c,magic-nx30|\
+	h3c,magic-nx54|\
+	h3c,magic-rc3000-v1|\
+	h3c,magic-rc3000-v2|\
+	h3c,magic-rc3000-v3|\
 	linksys,mx2000|\
 	linksys,mx5500|\
 	linksys,spnmx56|\
@@ -59,13 +65,14 @@ ipq50xx_setup_interfaces()
 		ucidef_set_network_device_conduit "lan3" "eth1"
 		ucidef_set_network_device_conduit "wan" "eth0"
 		;;
-	redmi,ax3000|\
-	xiaomi,cr8806)
+	xiaomi,cr8806|\
+	xiaomi,ra80|\
+	xiaomi,redmi-ax3000-ubootmod)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" "wan"
 		ucidef_set_network_device_conduit "lan1" "eth1"
 		ucidef_set_network_device_conduit "lan2" "eth1"
 		ucidef_set_network_device_conduit "lan3" "eth1"
-		ucidef_set_network_device_conduit "wan" "eth1"
+		ucidef_set_network_device_conduit "wan" "eth0"
 		;;
 	xunison,exigo-hub-d50-5g)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" "wan"
@@ -74,7 +81,8 @@ ipq50xx_setup_interfaces()
 		ucidef_set_interface_lan "lan1 lan2" "dhcp"
 		;;
 	tplink,eap650-outdoor-v1|\
-	tplink,re700x)
+	tplink,re700x|\
+	ubnt,unifi-6-pro)
 		ucidef_set_interface_lan "lan" "dhcp"
 		;;
 	zte,t5400)
@@ -99,6 +107,19 @@ ipq50xx_setup_macs()
 		[ -n "$lan_mac" ] && ucidef_set_network_device_mac "eth1" "$lan_mac"
 		[ -n "$lan_mac" ] && ucidef_set_label_macaddr "$lan_mac"
 		;;
+	h3c,magic-bx54-eu|\
+	h3c,magic-nx30|\
+	h3c,magic-nx54|\
+	h3c,magic-rc3000-v1|\
+	h3c,magic-rc3000-v2|\
+	h3c,magic-rc3000-v3)
+		label_mac=$(mtd_get_mac_ascii 0:appsblenv ethaddr)
+		[ -n "$label_mac" ] || return
+		ucidef_set_interface_macaddr "wan" "$label_mac"
+		ucidef_set_interface_macaddr "lan" "$(macaddr_add "$label_mac" 1)"
+		ucidef_set_network_device_mac "eth1" "$(macaddr_add "$label_mac" 1)"
+		ucidef_set_label_macaddr "$label_mac"
+		;;
 	mercusys,mr80x-v2|\
 	tplink,archer-ax53-v2|\
 	tplink,archer-ax55-v1|\
@@ -116,8 +137,8 @@ ipq50xx_setup_macs()
 		;;
 	tplink,mx515v-v1)
 		# factory MAC is 6 raw bytes in misc_ro/0x0434F100, mounted
-		# read-only during preinit (see lib/preinit/09_mount_misc_ro)
-		label_mac=$(get_mac_binary "/tmp/misc_ro/0x0434F100" 0)
+		# read-only during preinit (see lib/preinit/09_mount_tp_data)
+		label_mac=$(get_mac_binary "/tmp/tp_data/0x0434F100" 0)
 		[ -n "$label_mac" ] || return
 		ucidef_set_interface_macaddr "lan" "$label_mac"
 		ucidef_set_interface_macaddr "wan" "$(macaddr_add "$label_mac" 1)"

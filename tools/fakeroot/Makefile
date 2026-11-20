@@ -25,7 +25,7 @@ HOST_CONFIGURE_VARS += \
 	CPP="$(HOSTCC) -E"
 
 HOST_CONFIGURE_ARGS += \
-	--with-ipc=tcp
+	--with-ipc=sysv
 
 define Host/Uninstall
 	-$(call Host/Compile/Default,uninstall)

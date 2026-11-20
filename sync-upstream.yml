@@ -1,0 +1,36 @@
+name: Sync upstream branch
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-c3po-tag-8021q
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync c3po-tag-8021q
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: c3po-tag-8021q
+          fetch-depth: 0
+
+      - name: Fetch upstream branch
+        run: git fetch https://github.com/kuncy7/openwrt-nss-edma.git c3po-tag-8021q
+
+      - name: Merge upstream branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge --no-edit FETCH_HEAD
+
+      - name: Push synchronized branch
+        run: git push origin HEAD:c3po-tag-8021q
