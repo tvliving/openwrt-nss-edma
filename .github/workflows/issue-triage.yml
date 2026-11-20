@@ -9,8 +9,6 @@ name: Issue triage
 on:
   issues:
     types: [opened, edited, reopened]
-  schedule:
-    - cron: '17 4 * * *'
   workflow_dispatch:
   push:
     paths:

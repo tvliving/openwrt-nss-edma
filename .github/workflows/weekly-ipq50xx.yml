@@ -4,9 +4,6 @@ name: Weekly ipq50xx build
 # 说明：本仓库现有 IPQ5018 机型均为原厂分区（AX3000T v2 为 ubi_kernel 36MB + rootfs 81.5MB，
 # 合计约 128MB），没有合并/扩展的“大分区”变体；如后续加入大分区 dts，把矩阵指到对应机型即可。
 on:
-  schedule:
-    # 每周六 10:00（北京时间 UTC+8）= 02:00 UTC
-    - cron: '0 2 * * 6'
   workflow_dispatch:
     inputs:
       tag:

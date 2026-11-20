@@ -13,9 +13,6 @@ name: Build Xiaomi AX3000T v2 (IPQ5018, big-partition / in-place sysupgrade)
 # 其余 NSS/ath11k offload 配置来自 common.config。
 
 on:
-  schedule:
-    # 每周六 10:00 北京时间 = 02:00 UTC
-    - cron: '0 2 * * 6'
   workflow_dispatch:
     inputs:
       tag:
