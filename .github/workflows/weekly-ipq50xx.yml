@@ -1,0 +1,38 @@
+name: Weekly ipq50xx build
+
+# 每周一次触发 build-ipq50xx.yml（IPQ5018 机型，原厂分区布局）。
+# 说明：本仓库现有 IPQ5018 机型均为原厂分区（AX3000T v2 为 ubi_kernel 36MB + rootfs 81.5MB，
+# 合计约 128MB），没有合并/扩展的“大分区”变体；如后续加入大分区 dts，把矩阵指到对应机型即可。
+on:
+  schedule:
+    # 每周六 10:00（北京时间 UTC+8）= 02:00 UTC
+    - cron: '0 2 * * 6'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag（留空=ipq50xx-YYYY.MM.DD）'
+        required: false
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  trigger:
+    name: 触发每周编译
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Dispatch build-ipq50xx
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="ipq50xx-$(date -u +%Y.%m.%d)"
+          echo "触发 build-ipq50xx.yml，tag=$TAG"
+          gh workflow run build-ipq50xx.yml --ref "${GITHUB_REF_NAME}" -f tag="$TAG"
+          sleep 5
+          gh run list --workflow build-ipq50xx.yml --limit 3
