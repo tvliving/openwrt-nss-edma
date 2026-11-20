@@ -29,6 +29,15 @@ endif
 
 include $(INCLUDE_DIR)/package.mk
 
+# 无 golang feed 时（核心包 CI），kcptun-config 走默认 Build/Compile 会在
+# Go 源码目录里执行 make（该目录没有 Makefile）而直接失败，这里改为空操作。
+# 有 golang feed 时 golang-package.mk 会全局覆盖 Build/Compile，不受影响。
+ifneq ($(KCPTUN_HAVE_GOLANG),1)
+define Build/Compile
+	:
+endef
+endif
+
 ifneq ($(KCPTUN_HAVE_GOLANG),1)
 GO_ARCH_DEPENDS:=
 else
@@ -88,3 +97,4 @@ $(foreach component,$(KCPTUN_COMPONENTS), \
   $(eval $(call BuildPackage,kcptun-$(component))) \
 )
 endif
+
