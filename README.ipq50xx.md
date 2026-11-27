@@ -65,8 +65,8 @@ README).
 
 Ready images are on the [Releases page](https://github.com/kuncy7/openwrt-nss-edma/releases),
 one release per build, tagged `ipq50xx-YYYY.MM.DD` (a second build on the same day
-gets `-2`). The newest three are kept; older ones go away together with their
-kernel module repository, see below.
+gets `-2`). The newest five are kept. Their kernel module repositories stay
+longer, for the newest eight builds, see below.
 
 **Sysupgrade images only.** Flash `openwrt-qualcommax-ipq50xx-<device>-squashfs-sysupgrade.bin`
 over a running OpenWrt, from LuCI or with `sysupgrade`. There is no factory
@@ -109,13 +109,13 @@ and `iperf3` for checking it. There is no LuCI in the images:
 Status -> NSS Offload. Like any package added later, LuCI is gone after a
 sysupgrade and has to be installed again. Boards come in two groups, because
 the NSS firmware version and the NSS memory profile are a build-time choice for
-the whole image (the `std` group also carries the 802.11s mesh offload). ath11k
+the whole image (both groups carry the 802.11s mesh offload). ath11k
 picks its own memory profile when a radio probes, from the RAM size (see
 *Memory profiles* under *256 MB boards*), so the same driver serves both groups:
 
 | group | boards | memory profile |
 |---|---|---|
-| `std` | 512 MB and 1 GB boards (the release notes list them) | ath11k 1G (picked at boot), NSS medium |
+| `std` | 512 MB and 1 GB boards (the release notes list them) | ath11k 512M or 1G by the RAM size (picked at boot), NSS medium |
 | `256m` | Cudy P5, H3C Magic NX30, H3C Magic RC3000 v1, v2 and v3, Ruijie RG-MA3063, TP-Link Archer AX53 v2, TP-Link Archer AX58 v2, TP-Link EX511 v2, Xiaomi CR8806 (also CR8808, CR8809, Redmi AX3000), Xiaomi Redmi AX3000 (single rootfs layout), Xiaomi Mi Router AX3000T v2 | ath11k 256M (picked at boot), NSS low |
 
 The exact configuration of each group is in `.github/ci/ipq50xx/` (`common.config`
@@ -150,7 +150,8 @@ these images is not the official one, so the official `kmods` feed cannot
 serve them (`apk` says "no such package"). After a sysupgrade to a newer
 release, run `apk update` and install the modules again; they come from the
 new release's repository, which the new image already lists. A repository
-stays online as long as its release does.
+stays online for the newest eight builds, three builds longer than its
+release.
 
 ## Quick start
 
@@ -698,7 +699,7 @@ The board side is small. The parts, in order of effort:
    offloaded, see its notes below).
    Straight from the DTS, untested on the trunk: Linksys MX5500 and MR5500,
    Zyxel SCR50AXE, CMCC PZ-L8, I-O DATA WN-DAX3000GR, Elecom WRC-X3000GS2 /
-   GST2, Yuncore AX830 and AX850, AVM FRITZ!Box 4050. On those the settings apply themselves on
+   GST2, Yuncore AX830 and AX850, Lite-On WPX8324, AVM FRITZ!Box 4050. On those the settings apply themselves on
    first boot. Anything else logs a line telling you to set them by hand.
 
    The `dsa` topology needs no table entry. Besides the GL-B3000 it has run
@@ -802,7 +803,7 @@ Legend: ✅ offloaded & validated ·
 | L2 between LAN ports | ✅ | in the switch fabric (same VLAN), never reaches the SoC |
 | PPPoE | ✅ | Kernel patch `0961` gained the lockless `__ppp_hold_channels()` / `__ppp_is_multilink()` that ECM's deadlock fix needs, `kmod-qca-nss-drv-pppoe` is selected, and `nss-dwmac-up` **loads it** after the arm - without the manager in memory ECM tracks the PPPoE flows, marks every rule invalid and the WAN silently stays on the host path (measured: 0 rules, 22k exceptions in 20 s; the same silent failure AugustoAmaral hit before the package was selected at all, ~950 Mbit/s at 84-95 % idle on an AX6000 once it was in). Measured here on the `dsa` topology with the ISP's VLAN on the WAN port (`wan.35`, PPPoE server on the bench): rules created, 120k-157k firmware hits per 15-20 s, 0-65 exceptions, 2 % CPU, at the 100 Mbit/s ceiling of the bench client. On the trunk topology LS3434 runs it as `eth0.35` with `vtu='...;35:6t,2t'` (#154, #156): 890-950 down / 310 up at 1-5 % CPU. |
 | Wi-Fi (wifili) | ✅ | both radios; 734/447 Mbit/s over 5 GHz through the router, host ~90 % idle. Needs the core-clock fix - see below |
-| 802.11s mesh | ✅ | `std` group only; encap/decap and the path tables in the firmware, open and SAE. See "Mesh" below |
+| 802.11s mesh | ✅ | Both groups; encap/decap and the path tables in the firmware, open and SAE. See "Mesh" below |
 | SQM / NSS qdiscs | ✅ | `dsa` topology: `sqm-scripts-nss` shapes the WAN flows in a lane on the conduit (`eth0`), the other ports' traffic passes unshaped; nsstbl + nssfq_codel in the firmware both ways (IGS for ingress). Measured on the GL-B3000: 91/91 Mbit/s at a 100/100 limit, 18/45 at 20/50, ~3 ms ping under load, host 97 % idle. See "SQM" below |
 | Multicast through ECM | ⬜ | built off on ipq50xx until it is measured with the DSA port nodes; the feed reads the bridge MDB now, `qca-mcs` is gone |
 | MAP-T / DS-Lite | 🟨 | `kmod-nat46` staging from the base; untested here |
@@ -910,7 +911,7 @@ larger (2092 B) than the data frame size the host advertises (2048 B).
 
 ### Mesh (802.11s)
 
-The `std` images are built with the ath11k NSS mesh offload
+The images of both groups are built with the ath11k NSS mesh offload
 (`ATH11K_NSS_MESH_SUPPORT`, which pulls in `kmod-qca-nss-drv-wifi-meshmgr`):
 the firmware encapsulates and decapsulates the mesh frames and keeps the path
 and proxy tables, so a mesh backhaul - a second router as a satellite with the
@@ -922,16 +923,11 @@ radio firmware on either side (the mesh makes its peerings again and carries
 traffic within seconds, see the fixes below; measured with `wpad-mesh-mbedtls`
 managing the peerings, open and SAE). Not tried: more than one hop, 2.4 GHz,
 a peer that is not offloaded, a firmware crash with an open mesh run by the
-kernel's own peering (`wpad-basic-mbedtls`). The `256m` images are built without
-it: the mesh costs memory those boards do not have to spare. A mesh interface
-left in `/etc/config/wireless` on a `256m` image, kept from a `std` image for
-example, takes its whole radio down with it: the driver refuses the mesh
-interface and the access points on that radio do not come up either (seen on a
-GL-B3000 limited to 256 MB, firmware 12.2). Remove the mesh interface or set
-`option disabled '1'` on it. A mesh on a `256m` image needs the Wi-Fi on the
-host path (`nss.general.wifi_offload='0'`); ADCDS's Xiaomi AX3000T build
-measured about 20 MB less free memory that way under sustained Wi-Fi traffic.
-Not tried here.
+kernel's own peering (`wpad-basic-mbedtls`). On the `256m` group's boards the support
+alone costs no measurable memory and an active mesh with one peer about 1.6 MB
+(measured on a GL-B3000 limited to 256 MB, firmware 12.2, 2026-11-23); before
+2026-11-23 the `256m` images were built without it, and a mesh interface kept
+from a `std` image took its whole radio down there.
 
 An open mesh works with the image as it is. An encrypted mesh (SAE) needs the
 full mesh-capable `wpad`, which the image does not carry - it keeps
@@ -1017,18 +1013,22 @@ OOM-killed the AP daemon on a single iperf3 run. What it needed, all in the bran
   a radio probes (`nss-extra/ath11k/999-998`), from the RAM the kernel
   manages: below 384 MB the 256M profile, the 512M one with smaller RXDMA
   rings (`DP_RXDMA_BUF_RING_SIZE` 512, 1024 on the QCN6122) and a smaller
-  RX descriptor pool for the NSS Wi-Fi datapath; otherwise 1G. The log
-  says which, once per radio (here a GL-B3000 with 512 MB):
+  RX descriptor pool for the NSS Wi-Fi datapath; below 768 MB the 512M
+  profile; otherwise 1G. The log says which, once per radio (here a
+  GL-B3000 with 512 MB):
 
   ```
-  ath11k c000000.wifi: memory profile 1G (from the RAM size, 413 MB), rx descriptor full
+  ath11k c000000.wifi: memory profile 512M (from the RAM size, 413 MB), rx descriptor without the rx header TLV
   ```
 
   The `mem_profile` module parameter overrides the choice (1 1G, 2 512M,
-  3 256M; 0, the default, picks from the RAM size). The 512M profile is
-  only reached that way: it leaves the rx header TLV out on every radio,
-  and the PCIe radios on the 512 MB boards have not run with that, so no
-  board gets it on its own. In uci it is `nss.general.mem_profile`
+  3 256M; 0, the default, picks from the RAM size). The 512M profile
+  leaves the rx header TLV out of the rx descriptor. Until 2026-11-24 it
+  was only reached with the parameter, because the PCIe radios had not
+  run with it; it has since run on the IPQ5018, QCN6122 and QCN9074
+  radios, and a 512 MB board now gets it on its own. `1g` brings the old
+  choice back. The Q6 image has to be the one this tree ships
+  (`ath11k-firmware-ipq5018-qcn6122`, see *Firmware* above). In uci it is `nss.general.mem_profile`
   (`auto`, `1g`, `512m`, `256m`; unset is `auto`), read at boot: ath11k
   takes the parameter when a radio probes, so the service writes it to
   `/sys/module/ath11k/parameters/mem_profile` between `modprobe ath11k`
@@ -1058,8 +1058,8 @@ OOM-killed the AP daemon on a single iperf3 run. What it needed, all in the bran
   one does not make its 512 MB members pay in connection-table size. The
   same holds for the firmware: `nss.general.firmware=auto` boots 12.2-156
   below 384 MB (12.5-210 keeps payload buffers with some 802.11ac clients,
-  see *Firmware*). The `256m` release group still exists, for its board
-  list and because it is built without the 802.11s mesh offload.
+  see *Firmware*). The `256m` release group still exists for its board
+  list and for the build defaults (12.2-156, low).
   `qcom,ath11k-fw-memory-mode = <2>` on both radios is in the DTS.
 
 Result: ~850 / ~740 Mbit/s on 5 GHz with 4 streams (stock: 843 / 906),
